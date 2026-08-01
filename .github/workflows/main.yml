@@ -9,78 +9,61 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - name: Fast Checkout
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Fix Files and Clean Up
+      - name: Fix Files
         run: |
-          # 1. Unzip ZIPs if found
-          ZIP_FILE=$(find . -maxdepth 2 -name "*.zip" | head -n 1)
-          if [ -n "$ZIP_FILE" ]; then
-            echo "Unzipping $ZIP_FILE..."
-            unzip -q "$ZIP_FILE"
-            rm "$ZIP_FILE"
-          fi
-
-          # 2. DELETE node_modules (Prevents freezing)
-          find . -name "node_modules" -type d -prune -exec rm -rf '{}' +
-
-          # 3. Move files to root if hidden
+          # Finds and extracts any ZIP
+          find . -name "*.zip" -exec unzip -q {} \;
+          find . -name "*.zip" -delete
+          
+          # Removes heavy node_modules to stop freezing
+          rm -rf node_modules
+          find . -name "node_modules" -type d -exec rm -rf {} +
+          
+          # Moves files from subfolders to root
           PKG_PATH=$(find . -maxdepth 4 -name package.json | head -n 1)
           if [ -n "$PKG_PATH" ]; then
-            PROJECT_DIR=$(dirname "$PKG_PATH")
-            if [ "$PROJECT_DIR" != "." ]; then
-              echo "Moving files to root..."
-              cp -r "$PROJECT_DIR"/* .
-              cp -r "$PROJECT_DIR"/.* . 2>/dev/null || true
+            DIR=$(dirname "$PKG_PATH")
+            if [ "$DIR" != "." ]; then
+              cp -r "$DIR"/* .
+              cp -r "$DIR"/.* . 2>/dev/null || true
             fi
           fi
 
-      - name: Set up Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install Dependencies
+      - name: Install
         run: npm install --no-audit --no-fund
 
-      - name: Build Web App
+      - name: Build Web
         run: npm run build
         env:
           NODE_ENV: production
 
-      - name: Setup SHIKSHA
+      - name: Setup App
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android @capacitor/assets
-          
-          # Initialize with Name "SHIKSHA" only
           npx cap init "SHIKSHA" "com.shiksha.app" --web-dir=dist
           npx cap add android
+          sed -i 's/<\/application>/ <meta-data android:name="android.webkit.WebView.EnableSafeBrowsing" android:value="false" \/>\n <\/application>/' android/app/src/main/AndroidManifest.xml
           
-          # Optimization: Hardware Acceleration
-          sed -i 's/<\/application>/    <meta-data android:name="android.webkit.WebView.EnableSafeBrowsing" android:value="false" \/>\n    <\/application>/' android/app/src/main/AndroidManifest.xml
-          
-          # Icon Generation
           if [ -f "icon.png" ]; then
-            echo "✅ icon.png found! Generating icons..."
             npx capacitor-assets generate --icon icon.png --android
           fi
-
+          
           npx cap sync android
 
-      - name: Fix Kotlin Conflict
+      - name: Fix Kotlin
         run: |
           cd android/app
-          echo '
-          configurations.all {
-              resolutionStrategy {
-                  force "org.jetbrains.kotlin:kotlin-stdlib:1.8.22"
-                  force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22"
-              }
-          }
-          ' >> build.gradle
+          echo 'configurations.all { resolutionStrategy { force "org.jetbrains.kotlin:kotlin-stdlib:1.8.22"; force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22" } }' >> build.gradle
 
-      - name: Set up Java 21
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           java-version: '21'
@@ -90,10 +73,9 @@ jobs:
         run: |
           chmod +x android/gradlew
           cd android
-          # Build command
           ./gradlew assembleDebug --no-daemon -Dorg.gradle.jvmargs="-Xmx2560m"
 
-      - name: Upload SHIKSHA
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: SHIKSHA
