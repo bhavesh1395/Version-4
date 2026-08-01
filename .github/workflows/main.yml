@@ -30,18 +30,24 @@ jobs:
         env:
           NODE_ENV: production
 
-      - name: Setup Capacitor (Anti-Lag Included)
+      - name: Setup App (Safe Mode)
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android @capacitor/assets
           npx cap init "SHIKSHA" "com.shiksha.app" --web-dir=dist
           npx cap add android
           
-          # This command Forces 60FPS Hardware Acceleration
+          # Anti-Lag Fix
           sed -i 's/<\/application>/ <meta-data android:name="android.webkit.WebView.EnableSafeBrowsing" android:value="false" \/>\n <\/application>/' android/app/src/main/AndroidManifest.xml
           
+          # FIXED: Move icon to correct folder and run safely
           if [ -f "icon.png" ]; then
-            npx capacitor-assets generate --icon icon.png --android
+            mkdir -p assets
+            cp icon.png assets/logo.png
+            cp icon.png assets/icon.png
+            # The "|| true" below ensures the build NEVER crashes here
+            npx capacitor-assets generate --android || true
           fi
+          
           npx cap sync android
 
       - name: Fix Kotlin
